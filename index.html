@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Renombrador de Actas PDF</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 1.8rem;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 0.9rem;
+        }
+        .file-input-wrapper {
+            position: relative;
+            margin-bottom: 25px;
+        }
+        .file-input {
+            display: none;
+        }
+        .file-label {
+            display: block;
+            padding: 50px 20px;
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #f8f9ff;
+        }
+        .file-label:hover {
+            background: #eef1ff;
+            border-color: #764ba2;
+        }
+        .file-label.has-file {
+            border-style: solid;
+            border-color: #28a745;
+            background: #e8f5e9;
+        }
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+        .file-name {
+            color: #333;
+            font-weight: 600;
+            word-break: break-all;
+        }
+        .options {
+            margin-bottom: 25px;
+        }
+        .option-title {
+            color: #333;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        .radio-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .radio-option {
+            flex: 1;
+            min-width: 120px;
+        }
+        .radio-option input {
+            display: none;
+        }
+        .radio-option label {
+            display: block;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .radio-option input:checked + label {
+            border-color: #667eea;
+            background: #667eea;
+            color: white;
+        }
+        .preview {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+        }
+        .preview-title {
+            color: #666;
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .preview-old {
+            color: #999;
+            text-decoration: line-through;
+            margin-bottom: 5px;
+            word-break: break-all;
+        }
+        .preview-arrow {
+            color: #667eea;
+            font-size: 1.5rem;
+            margin: 5px 0;
+        }
+        .preview-new {
+            color: #28a745;
+            font-weight: 700;
+            font-size: 1.1rem;
+            word-break: break-all;
+        }
+        .btn-rename {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn-rename:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+        .btn-rename:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .success-message {
+            text-align: center;
+            padding: 20px;
+            background: #e8f5e9;
+            border-radius: 10px;
+            margin-top: 20px;
+            animation: fadeIn 0.5s;
+        }
+        .success-icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .curp-extracted {
+            background: #fff3cd;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-family: monospace;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        function App() {
+            const [file, setFile] = useState(null);
+            const [prefix, setPrefix] = useState('MAT');
+            const [newFileName, setNewFileName] = useState('');
+            const [curp, setCurp] = useState('');
+            const [success, setSuccess] = useState(false);
+
+            // Extraer CURP del nombre del archivo
+            const extractCurp = (filename) => {
+                // Busca patrones como acta_XXXXXX.pdf, matricula_XXXXXX.pdf, etc.
+                const match = filename.match(/[a-zA-Z]+_([A-Z]{4}\d{6}[A-Z]{6}\d{2})/i);
+                return match ? match[1] : null;
+            };
+
+            const handleFileChange = (e) => {
+                const selectedFile = e.target.files[0];
+                if (selectedFile && selectedFile.type === 'application/pdf') {
+                    setFile(selectedFile);
+                    const extractedCurp = extractCurp(selectedFile.name);
+                    if (extractedCurp) {
+                        setCurp(extractedCurp);
+                        updateNewFileName(prefix, extractedCurp);
+                    } else {
+                        setCurp('');
+                        setNewFileName('');
+                    }
+                    setSuccess(false);
+                }
+            };
+
+            const updateNewFileName = (newPrefix, curpValue) => {
+                if (curpValue) {
+                    setNewFileName(`${newPrefix}_${curpValue}.pdf`);
+                }
+            };
+
+            const handlePrefixChange = (newPrefix) => {
+                setPrefix(newPrefix);
+                if (curp) {
+                    updateNewFileName(newPrefix, curp);
+                }
+            };
+
+            const handleRename = () => {
+                if (!file || !newFileName) return;
+
+                // Crear un nuevo File con el nombre cambiado
+                const renamedFile = new File([file], newFileName, { type: file.type });
+
+                // Crear URL para descarga
+                const url = URL.createObjectURL(renamedFile);
+                
+                // Crear link temporal para descarga automática
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = newFileName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                // Limpiar URL
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+                setSuccess(true);
+            };
+
+            return (
+                <div className="container">
+                    <h1>📄 Renombrador de Actas</h1>
+                    <p className="subtitle">Convierte acta_{'{CURP}'} en MAT_{'{CURP}'} o DIV_{'{CURP}'}</p>
+
+                    <div className="file-input-wrapper">
+                        <input
+                            type="file"
+                            id="pdfFile"
+                            className="file-input"
+                            accept=".pdf"
+                            onChange={handleFileChange}
+                        />
+                        <label htmlFor="pdfFile" className={`file-label ${file ? 'has-file' : ''}`}>
+                            <div className="upload-icon">📁</div>
+                            {file ? (
+                                <div>
+                                    <div className="file-name">{file.name}</div>
+                                    <small>Click para cambiar archivo</small>
+                                </div>
+                            ) : (
+                                <div>
+                                    Arrastra tu PDF aquí o haz click para seleccionar
+                                    <br />
+                                    <small>Formato esperado: acta_XXXXXX.pdf</small>
+                                </div>
+                            )}
+                        </label>
+                    </div>
+
+                    {curp && (
+                        <div className="curp-extracted">
+                            ✅ CURP detectada: <strong>{curp}</strong>
+                        </div>
+                    )}
+
+                    <div className="options">
+                        <div className="option-title">Selecciona el nuevo prefijo:</div>
+                        <div className="radio-group">
+                            <div className="radio-option">
+                                <input
+                                    type="radio"
+                                    id="mat"
+                                    name="prefix"
+                                    checked={prefix === 'MAT'}
+                                    onChange={() => handlePrefixChange('MAT')}
+                                />
+                                <label htmlFor="mat">MAT_</label>
+                            </div>
+                            <div className="radio-option">
+                                <input
+                                    type="radio"
+                                    id="div"
+                                    name="prefix"
+                                    checked={prefix === 'DIV'}
+                                    onChange={() => handlePrefixChange('DIV')}
+                                />
+                                <label htmlFor="div">DIV_</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    {newFileName && (
+                        <div className="preview">
+                            <div className="preview-title">Vista previa del cambio</div>
+                            <div className="preview-old">{file?.name}</div>
+                            <div className="preview-arrow">⬇</div>
+                            <div className="preview-new">{newFileName}</div>
+                        </div>
+                    )}
+
+                    <button
+                        className="btn-rename"
+                        onClick={handleRename}
+                        disabled={!file || !newFileName}
+                    >
+                        {success ? '✅ ¡Descargado!' : '📥 Renombrar y Descargar'}
+                    </button>
+
+                    {success && (
+                        <div className="success-message">
+                            <div className="success-icon">🎉</div>
+                            <div>¡Archivo renombrado y descargado!</div>
+                            <small>Revisa tu carpeta de descargas</small>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
